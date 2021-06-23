@@ -1,0 +1,8 @@
+##########################################
+# These are for gcc in the sky cross env #
+# running in c++ mode                    #
+##########################################
+
+CFLAGS += -x c++
+
+include $(RWSDK)/../app/makecom/sky/sky2953

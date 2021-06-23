@@ -1,0 +1,170 @@
+# put a default target at the top to prevent rules from getting confused later
+
+all:  demo
+
+#
+# include user custom options file if it exists
+#
+ifndef RWOPTIONS
+RWOPTIONS = options.mak
+endif
+include $(RWOPTIONS)
+
+ifndef RWSIMD
+RWSIMD = 0
+endif
+
+ifndef RWVERBOSE
+RWVERBOSE = 0
+endif
+
+ifndef RWSUPPRESSINLINE
+RWSUPPRESSINLINE = 0
+endif
+
+ifndef RWSUPPRESSOPTIMIZATIONPRAGMAS
+RWSUPPRESSOPTIMIZATIONPRAGMAS = 0
+endif
+
+ifeq ($(RWFULLPLATFORM), 1)
+RWPLATFORM    = $(RWOS)/$(RWCOMPILER)/$(RWTARGET)
+RWPLATFORMEXE  = $(RWOS)_$(RWCOMPILER)_$(RWTARGET)
+else
+RWPLATFORM    = $(RWTARGET)
+RWPLATFORMEXE  = $(RWTARGET)
+endif  # ifeq ($(RWFULLPLATFORM), 1)
+
+# all directories are defined relative to DEMODIR
+ifndef DEMODIR
+DEMODIR = $(CURDIR)
+# setting BASDEIR=$(CURDIR) enables absolute path names
+# which makes a better job of debug symbols for profiling. debugging etc.
+# see also http://www.fsf.org/software/make/make.html
+endif
+
+# RWOUTPUT
+ifeq ("$(RWOUTPUT)", "")
+RWLIBPATH = $(RWSDK)/lib/$(RWPLATFORM)
+else
+RWLIBPATH = $(RWSDK)/lib/$(RWPLATFORM)/$(RWOUTPUT)
+endif
+
+ifeq ($(RWMETRICS), 1)
+RWLIBDIR = $(RWLIBPATH)/metrics
+ifeq ("$(RWOUTPUT)", "")
+OBJDIR = obj/$(RWPLATFORM)m
+else
+OBJDIR = obj/$(RWPLATFORM)m/$(RWOUTPUT)
+endif
+CFLAGS += -DRWMETRICS
+PROJS = $(DEMO)_$(RWPLATFORMEXE)m$(EXE)
+else # RWMETRICS
+ifeq ($(RWDEBUG), 1)
+RWLIBDIR = $(RWLIBPATH)/debug
+ifeq ("$(RWOUTPUT)", "")
+OBJDIR = obj/$(RWPLATFORM)d
+else
+OBJDIR = obj/$(RWPLATFORM)d/$(RWOUTPUT)
+endif
+CFLAGS += -DRWDEBUG
+PROJS = $(DEMO)_$(RWPLATFORMEXE)d$(EXE)
+else # RWDEBUG
+ifeq ($(CPROFILE), 1)
+RWLIBDIR = $(RWLIBPATH)/profile
+ifeq ("$(RWOUTPUT)", "")
+OBJDIR = obj/$(RWPLATFORM)p
+else
+OBJDIR = obj/$(RWPLATFORM)p/$(RWOUTPUT)
+endif
+CFLAGS += -DCPROFILE
+PROJS = $(DEMO)_$(RWPLATFORMEXE)p$(EXE)
+else # CPROFILE
+ifeq ($(MSWST), 1)
+RWLIBDIR = $(RWLIBPATH)/mswst
+ifeq ("$(RWOUTPUT)", "")
+OBJDIR = obj/$(RWPLATFORM)wst
+else
+OBJDIR = obj/$(RWPLATFORM)wst/$(RWOUTPUT)
+endif
+PROJS = $(DEMO)_$(RWPLATFORMEXE)wst$(EXE)
+else # MSWS
+RWLIBDIR = $(RWLIBPATH)
+ifeq ("$(RWOUTPUT)", "")
+OBJDIR = obj/$(RWPLATFORM)
+else
+OBJDIR = obj/$(RWPLATFORM)/$(RWOUTPUT)
+endif
+PROJS = $(DEMO)_$(RWPLATFORMEXE)$(EXE)
+endif # MSWST
+endif # CPROFILE
+endif # RWDEBUG
+endif # RWMETRICS
+
+ifeq ("$(RWTARGET)", "xbox")
+XBOXPROJS = $(patsubst %$(EXE),%.xbe,$(PROJS))
+endif
+
+ifeq ($(RWPATCH), 1)
+CFLAGS += -DRWPATCH
+endif
+
+ifeq ($(RWMEMDEBUG), 1)
+CFLAGS += -DRWMEMDEBUG
+endif
+
+ifeq ($(RWSIMD), 1)
+CFLAGS += -DRWSIMD
+endif
+
+ifeq ($(RWVERBOSE), 1)
+CFLAGS += -DRWVERBOSE
+endif
+
+ifeq ($(RWSUPPRESSINLINE), 1)
+CFLAGS += -DRWSUPPRESSINLINE
+endif
+
+ifeq ($(RWSUPPRESSOPTIMIZATIONPRAGMAS), 1)
+CFLAGS += -DRWSUPPRESSOPTIMIZATIONPRAGMAS
+endif
+
+RWINCDIR = $(RWSDK)/include/$(RWPLATFORM)
+
+# Define Common Directories & Files
+
+SKEL   = $(DEMODIR)/skel
+SKELPS = $(SKEL)/$(RWOS)
+COMMON = $(DEMODIR)/democom
+SRC    = $(DEMODIR)/src
+
+# FXNODES= $(DEMODIR)/../fxnodes
+
+ifeq ($(RWLOGO), 1)
+RWLIBS += $(RWLIBDIR)/$(LP)rplogo.$(L)
+CFLAGS += -DRWLOGO
+endif
+
+ifeq ($(RWSPLASH), 1)
+CFLAGS += -DRWSPLASH
+endif
+
+CINCLUDE +=						\
+	-I$(RWINCDIR)					\
+	-I$(RWSDK)/include/$(RWPLATFORM)/archive	\
+	-I$(COMMON)					\
+	-I$(SKEL)					\
+	-I$(SKELPS)					\
+	-I$(SRC)
+
+CFLAGS +=					\
+	-DRWTARGET_$(RWPLATFORMEXE)		\
+	$(CINCLUDE)
+
+# -I$(FXNODES)
+
+include makecom/$(RWOS)/$(RWCOMPILER)
+
+ifeq ($(RWTEST), 1)
+include ../../../tests/maketest/$(RWOS)
+endif
+
