@@ -1,0 +1,29 @@
+[SYS]
+VERSION=1.00
+MEDIA=DVD
+TARGET=PS2
+DISCVERSION=1.00
+DATE=2021/08/11-15:19:25
+[/SYS]
+
+[CUE]
+DISCNAME="TEST-12345                      "
+PRODUCER="AAP                             "
+COPYRIGHT="                                "
+CREATIONDATE=20210811
+PSTYPE=2
+DISCCODE=03
+[/CUE]
+
+[LOC]
+# the number of entries: 9
+#Start   End      Mode Fno Source
+0        278      0.0  0   "disc.ims"
+600000   600000   0.0  0   "SYSTEM.CNF"
+600001   600787   0.0  0   "rwtest_sky2.elf"
+600788   600922   0.0  0   "SYSTEM\IOPRP300.IMG"
+600923   600925   0.0  0   "SYSTEM\SIO2MAN.IRX"
+600926   600948   0.0  0   "SYSTEM\PADMAN.IRX"
+600949   601009   0.0  0   "MODELS\GTA3.DIR"
+601010   660601   0.0  0   "MODELS\GTA3.IMG"
+[/LOC]
