@@ -5,10 +5,10 @@
 #include "skyfs.h"
 #include "FileMgr.h"
 
-#ifdef CDROM
-char CFileMgr::ms_rootDirName[128] = "\\";
-#else
+#ifdef FILES_HOST
 char CFileMgr::ms_rootDirName[128] = "host0:./";
+#else
+char CFileMgr::ms_rootDirName[128] = "\\";
 #endif
 char CFileMgr::ms_dirName[128];
 

@@ -267,14 +267,14 @@ OpenFromDirectory(const char *name)
 		return NULL;
 	}
 	printf("found <%s>: %d %d %d\n", name, slot, directory[slot].offset, directory[slot].size);
-#ifdef CDROM
+#ifdef STREAM_HOST
+	CFileMgr::Seek(cdImageFD, directory[slot].offset*2048, 0);
+	CFileMgr::Read(cdImageFD, (char*)streamBuffer, directory[slot].size*2048);
+#else
 	int ret = CdStreamRead(0, streamBuffer, imageOffset + directory[slot].offset, directory[slot].size);
 	printf("CdStreamRead: %d\n", ret);
 	ret = CdStreamSync(0);
 	printf("CdStreamSync: %d\n", ret);
-#else
-	CFileMgr::Seek(cdImageFD, directory[slot].offset*2048, 0);
-	CFileMgr::Read(cdImageFD, (char*)streamBuffer, directory[slot].size*2048);
 #endif
 	mem.start = streamBuffer;
 	mem.length = directory[slot].size*2048;
@@ -292,7 +292,7 @@ RwStream*
 OpenStream(const char *name)
 {
 	char path[256];
-	sprintf(path, "host0:./models/%s", name);
+	sprintf(path, "models/%s", name);
 	return RwStreamOpen(rwSTREAMFILENAME, rwSTREAMREAD, path);
 }
 #endif
@@ -369,7 +369,8 @@ InitDirectory(void)
 
 // TODO: make this work with images on host
 #ifdef USE_CDIMAGE
-	fd = CFileMgr::OpenFile("cdrom0:\\MODELS\\GTA3.DIR");
+//	fd = CFileMgr::OpenFile("cdrom0:\\MODELS\\GTA3.DIR");
+	fd = CFileMgr::OpenFile("MODELS\\GTA3.DIR");
 	if(fd == 0){
 		printf("error opening\n");
 		return;
@@ -379,15 +380,15 @@ InitDirectory(void)
 	streamBuffer = (uint8*)RwMalloc(maxFileSize*2048);
 	assert(((uint32)streamBuffer & 0xF) == 0);
 
-#ifdef CDROM
-	CFileMgr::GetCdFile("\\MODELS\\GTA3.IMG;1", imageSize, imageOffset);
-	printf("gta3.img: %d %d %d\n", imageOffset, imageSize, imageOffset+imageSize);
-#else
-	cdImageFD = CFileMgr::OpenFile("cdrom0:\\MODELS\\GTA3.IMG");
+#ifdef STREAM_HOST
+	cdImageFD = CFileMgr::OpenFile("MODELS\\GTA3.IMG");
 	if(cdImageFD == 0){
 		printf("error opening\n");
 		return;
 	}
+#else
+	CFileMgr::GetCdFile("\\MODELS\\GTA3.IMG;1", imageSize, imageOffset);
+	printf("gta3.img: %d %d %d\n", imageOffset, imageSize, imageOffset+imageSize);
 #endif
 #endif
 }
@@ -712,15 +713,15 @@ GetModulePath(const char *module)
 	char *s;
 
 	strcpy(tmp, module);
-#ifdef IOP_CDROM
-	strcpy(path, "cdrom0:\\SYSTEM\\");
-#else
-#define TOSTRING__(arg) #arg
-#define TOSTRING(arg) TOSTRING__(arg)
+#ifdef IOP_HOST
+//#define TOSTRING__(arg) #arg
+//#define TOSTRING(arg) TOSTRING__(arg)
 	for(s = tmp; *s; s++)
 		if(isupper(*s)) *s = tolower(*s);
 //	sprintf(path, "host0:%s/modules/", TOSTRING(IOPPATH));
 	sprintf(path, "host0:./modules/");
+#else
+	strcpy(path, "cdrom0:\\SYSTEM\\");
 #endif
 	strcat(path, tmp);
 	return path;
@@ -834,13 +835,36 @@ CreateDebugFont(void)
 	return TRUE;
 }
 
+extern "C" {
+
+volatile int frameCount;
+
+void
+WaitVBlank(void)
+{
+	int frm = frameCount;
+	while(frm == frameCount);
+}
+
+int
+VBlankCounter(int ca)
+{
+	frameCount++;
+	ExitHandler();
+	return 0;
+}
+
+}
+
 void
 GameInit(void)
 {
 	RwRect r;
 
+#ifdef CDROM
 	LoadModule("CDSTREAM.IRX");
 	CdStreamInit(5);
+#endif
 
 	Initialise3D();
 
@@ -852,11 +876,9 @@ GameInit(void)
 
 	CreateDebugFont();
 
-	r.x = 0;
-	r.y = 0;
-	r.w = RsGlobal.maximumWidth;
-	r.h = RsGlobal.maximumHeight;
-	CameraSize(Camera, &r, DEFAULT_VIEWWINDOW, DEFAULT_ASPECTRATIO);
+	AddIntcHandler(INTC_VBLANK_S, VBlankCounter, 0);
+
+	CameraSize(Camera, NULL, DEFAULT_VIEWWINDOW, DEFAULT_ASPECTRATIO);
 }
 
 int
