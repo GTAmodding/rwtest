@@ -1,0 +1,16 @@
+AR      = iop-ar
+AS      = iop-as
+CC      = iop-gcc
+GCC     = iop-gcc
+LD      = iop-ld
+NM      = iop-nm
+SIZE    = iop-size
+STRIP   = iop-strip
+RANLIB  = iop-ranlib
+OBJCOPY = iop-objcopy
+OBJDUMP = iop-objdump
+IFIXUP  = iopfixup
+ILBGEN  = ioplibgen
+ILBLD   = ioplibld
+ILBDUMP = ioplibdump
+BIN2OBJ = bin2elf

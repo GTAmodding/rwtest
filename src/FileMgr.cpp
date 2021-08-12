@@ -1,13 +1,16 @@
+#include "common.h"
 #include <assert.h>
 #include "rwcore.h"
-#include "common.h"
 #include "libcdvd.h"
+#include "skyfs.h"
 #include "FileMgr.h"
 
+#ifdef CDROM
 char CFileMgr::ms_rootDirName[128] = "\\";
+#else
+char CFileMgr::ms_rootDirName[128] = "host0:./";
+#endif
 char CFileMgr::ms_dirName[128];
-
-void SkySetDirectory(char *dir) {}	// TODO: skyfs.c
 
 void
 CFileMgr::Initialise(void)
@@ -132,12 +135,12 @@ CFileMgr::CloseFile(int fd)
 }
 
 bool
-CFileMgr::GetCdFile(const char *file, uint32 &pos, uint32 &size)
+CFileMgr::GetCdFile(const char *file, uint32 &size, uint32 &offset)
 {
 	sceCdlFILE cdfile;
 	if(sceCdSearchFile(&cdfile, file) == 0)
 		return false;
-	pos = cdfile.lsn;
+	offset = cdfile.lsn;
 	size = cdfile.size;
 	return true;
 }

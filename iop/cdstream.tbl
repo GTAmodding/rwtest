@@ -1,0 +1,13 @@
+Libname cdstream mylib_entry
+Version 1.1
+
+Entry	-
+Entry	-
+Entry	-
+Entry	-
+
+Entry	CdStreamInit
+Entry	CdStreamRead
+Entry	CdStreamGetStatus
+Entry	CdStreamSync
+Entry	CdStreamGetLastPosn

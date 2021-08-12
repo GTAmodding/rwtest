@@ -1,43 +1,16 @@
-
-/****************************************************************************
- *
- * skyfs.c
- *
- * This file is a product of Criterion Software Ltd.
- *
- * This file is provided as is with no warranties of any kind and is
- * provided without any obligation on Criterion Software Ltd.
- * or Canon Inc. to assist in its use or modification.
- *
- * Criterion Software Ltd. and Canon Inc. will not, under any
- * circumstances, be liable for any lost revenue or other damages
- * arising from the use of this file.
- *
- * Copyright (c) 1999, 2000 Criterion Software Ltd.
- * All Rights Reserved.
- *
- */
-
 #include "stdio.h"
 #include "string.h"
+#include "ctype.h"
 #include "assert.h"
 
 /*#include "unistd.h"*/
 #include "sifdev.h"
+#include "libcdvd.h"
 
 #include "rwcore.h"
 #include "skyfs.h"
 
-/* Because CDROM is used in sky.c
- * it's better to define this for a project and not here.
- */
-
-/* Use this define to get DEBUGSTATION behavior */
-/*#define DEBUGSTATION*/
-/* Use this define to get CDROM behavior */
-//#define CDROM
-
-#define READBUFFERSIZE 10240
+#define READBUFFERSIZE 16*1024
 
 #define RWGDFSGLOBAL(var)                               \
     (RWPLUGINOFFSET(gdfsGlobals,                        \
@@ -49,10 +22,10 @@
 typedef struct skyFile skyFile;
 struct skyFile
 {
+    RwUInt8             readBuffer[READBUFFERSIZE];
     int                 gdfs;
     RwInt32             POS;
     RwInt32             SOF;
-    RwUInt8             readBuffer[READBUFFERSIZE];
     RwUInt32            bufferPos;
     RwBool              bufferValid;
 };
@@ -69,9 +42,69 @@ struct gdfsGlobals
 RwInt32             gdfsOpenFiles;
 RwModuleInfo        gdfsModuleInfo;
 
-#ifdef DEBUGSTATION
-extern char debugStationFilePrefix[32];
-#endif
+char gpDirectory[64];
+#define MAX_FILE_INFOS 90
+struct {
+	char path[40];
+	RwUInt32 pos;
+	RwUInt32 size;
+} cdFileInfoArray[MAX_FILE_INFOS];
+int numFileInfos;
+
+void
+SkyRegisterFileOnCd(const char *file)
+{
+	sceCdlFILE cdfile;
+
+	if(numFileInfos == 90){
+		// not in release:
+		scePrintf("no more file infos\n");
+		return;
+	}
+
+	for(;;){
+		sceCdDiskReady(0);
+		if(sceCdSearchFile(&cdfile, file))
+			break;
+		scePrintf("Cannot find %s on CD\n", file);
+	}
+	cdFileInfoArray[numFileInfos].pos = cdfile.lsn;
+	cdFileInfoArray[numFileInfos].size = cdfile.size;
+	strcpy(cdFileInfoArray[numFileInfos].path, file);
+scePrintf("registered: <%s> %d %d %d\n", file, cdfile.lsn, cdfile.size, cdfile.lsn+cdfile.size);
+	numFileInfos++;
+}
+
+void
+SkySetDirectory(const char *dir)
+{
+	strcpy(gpDirectory, dir);
+}
+
+// NB: only for cdrom!
+void
+SkyPostProcessFilename(char *buf, const char *file)
+{
+	int i;
+	char *p;
+
+	strcpy(buf, gpDirectory);
+	strcat(buf, file);
+
+	i = strlen(buf);
+	p = buf + i;
+	while(i--){
+		if(islower(*p))
+			*p = toupper(*p);
+		else if(*p == '/')
+			*p = '\\';
+		else if(*p == ':')
+			break;
+		p--;
+	}
+
+	strcat(buf, ";1");
+}
 
 /****************************************************************************
  skyTransMode
@@ -130,53 +163,56 @@ skyTransMode(const RwChar * access)
     return (mode);
 }
 
-/****************************************************************************
- trySkyFopen
-
- One attempt at opening a file
-
- On entry   : Filename, access mode
- On exit    :
- */
-
-static void        *
+static void *
 trySkyFopen(const RwChar * fname, const RwChar * access)
 {
-    skyFile            *fp;
-    int                 mode;
-    RwChar              name[256];
-    RwChar             *nameptr;
+	skyFile *fp;
+	int      mode;
+	RwChar   name[256];
+	RwChar  *nameptr;
 	int cdrom = 0;
 
-    /* First manipulate the filename into a Sky friendly name */
-    if (strchr(fname, ':'))
-    {
-        strncpy(name, fname, 255);
-	if(strncmp(name, "cdrom", 5) == 0)
+	if (strchr(fname, ':')) {
+		strncpy(name, fname, 255);
+		if(strncmp(name, "cdrom", 5) == 0)
+			cdrom = 1;
+	} else {
+#ifdef CDROM
+		int i;
+		int found;
+		RwUInt32 pos, size;
+
 		cdrom = 1;
-    }
-    else
-    {
-#if (defined(CDROM))
-        sprintf(name, "cdrom0:\\%s", fname);
-	cdrom = 1;
+		strcpy(name, "cdrom0:");
+		nameptr = name+7;
+		SkyPostProcessFilename(nameptr, fname);
+		printf("<%s> -> <%s>\n", fname, name);
 
-        /* append a ;1 to the end if required */
-        name[253] = 0;
-        /* we assume that any ';' indicates a version appended */
-        if (!strrchr(name, ';'))
-        {
-            strcat(name, ";1");
-        }
-        strupr(&name[7]);
-#elif (defined(DEBUGSTATION))
-        strcpy(name, debugStationFilePrefix);
-        strcat((RwChar *)name, fname);
+		found = 0;
+		for(i = 0; !found && i < numFileInfos; i++){
+			if(strcmp(cdFileInfoArray[i].path, nameptr) == 0){
+				found = 1;
+				pos = cdFileInfoArray[i].pos;
+				size = cdFileInfoArray[i].size;
+			}
+		}
+
+		if(found){
+			printf("found registered file!\n");
+		}else{
+			printf("did not find registered file!\n");
+			sceCdlFILE cdfile;
+			for(;;){
+				sceCdDiskReady(0);
+				if(sceCdSearchFile(&cdfile, nameptr))
+					break;
+				scePrintf("Cannot find %s on CD\n", nameptr);
+			}
+			printf("now i got it\n");
+		}
 #else
-        strcpy(name, "host:");
-        strcat((RwChar *)name, fname);
-
-#endif /* CDROM */
+		sprintf(name, "host0:%s", fname);
+#endif
     }
     /* force null termination */
     name[255] = 0;
@@ -255,16 +291,17 @@ printf("open <%s> -> %d\n", name, fp->gdfs);
 static void        *
 skyFopen(const RwChar * name, const RwChar * access)
 {
-    void               *res;
+	void               *res;
 
-    res = trySkyFopen(name, access);
+	res = trySkyFopen(name, access);
 
-    if (res)
-    {
-        return (res);
-    }
+	if (res) {
+		scePrintf("Opening %s\n", name);
+		return (res);
+	}
 
-    return (NULL);
+	scePrintf("Failed to open %s\n", name);
+	return (NULL);
 }
 
 /****************************************************************************

@@ -12,6 +12,7 @@ CXXSRC = $(SRC)/main.cpp	\
 
 CSRC = $(SRC)/camera.c	\
 	$(SRC)/skyfs.c		\
+	$(SRC)/cdstream.c		\
 
 #CSRC += $(SKELSRC)
 

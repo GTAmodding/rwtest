@@ -24,7 +24,7 @@ public:
 	static char *GetRootDirName() { return ms_rootDirName; }
 
 // only PS2
-	static bool GetCdFile(const char *file, uint32 &xx, uint32 &yy);
+	static bool GetCdFile(const char *file, uint32 &size, uint32 &offset);
 	static void InitCd(void);
 	static void InitCdSystem(void);
 };

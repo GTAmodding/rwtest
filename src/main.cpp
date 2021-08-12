@@ -1,14 +1,5 @@
-//////////// NB: for non-devkits these three have to be defined!!!
-// this disconnects dsedb if run with -r run foo.elf
-// but it works if you run from within dsedb
-//#define REBOOT_IOP
-//#define IOP_CDROM	// load IOP modules from CD
-#define CDROM		// enable CD support
-
-// load files from gta3.dir/img
-#define USE_CDIMAGE
-
 #include <ctype.h>
+#include <assert.h>
 #include "rwcore.h"
 #include "rpworld.h"
 
@@ -35,6 +26,8 @@
 #include "camera.h"
 #include "skyfs.h"
 
+#include "common.h"
+
 // SCE stuff
 #include "eeregs.h"
 #include "sifdev.h"
@@ -45,9 +38,9 @@
 #endif
 
 
-#include "common.h"
 #include "FileMgr.h"
 #include "Pad.h"
+#include "cdstream.h"
 
 #ifdef WIDE_SCREEN
 #define DEFAULT_ASPECTRATIO (16.0f/9.0f)
@@ -108,6 +101,7 @@ uint32 maxFileSize;
 uint8 *streamBuffer;
 
 int cdImageFD;
+uint32 imageOffset, imageSize;
 
 void
 LoadDirectory(int fd)
@@ -232,6 +226,35 @@ CreateCamera(RpWorld *world)
 	return NULL;
 }
 
+/*
+void
+dumpbuf(uint8 *buf, int n)
+{
+	int i = 0;
+	for(i = 0; i < n; i++){
+		if((i % 16) == 0)
+			printf("\n");
+		printf("%02X ", buf[i]);
+	}
+	printf("\n");
+}
+
+void
+dumpfile(const char *name, uint8 *buf, int len)
+{
+	char path[256];
+	int fd;
+	sprintf(path, "host0:./%s", name);
+	fd = sceOpen(path, SCE_WRONLY | SCE_CREAT | SCE_TRUNC);
+	if(fd < 0){
+		printf("couldn't open file '%s'\n", path);
+		return;
+	}
+	sceWrite(fd, buf, len);
+	sceClose(fd);
+}
+*/
+
 RwStream*
 OpenFromDirectory(const char *name)
 {
@@ -243,9 +266,16 @@ OpenFromDirectory(const char *name)
 		printf("couldn't find <%s>\n", name);
 		return NULL;
 	}
-	printf("found <%s>: %d %X %X\n", name, slot, directory[slot].offset, directory[slot].size);
+	printf("found <%s>: %d %d %d\n", name, slot, directory[slot].offset, directory[slot].size);
+#ifdef CDROM
+	int ret = CdStreamRead(0, streamBuffer, imageOffset + directory[slot].offset, directory[slot].size);
+	printf("CdStreamRead: %d\n", ret);
+	ret = CdStreamSync(0);
+	printf("CdStreamSync: %d\n", ret);
+#else
 	CFileMgr::Seek(cdImageFD, directory[slot].offset*2048, 0);
 	CFileMgr::Read(cdImageFD, (char*)streamBuffer, directory[slot].size*2048);
+#endif
 	mem.start = streamBuffer;
 	mem.length = directory[slot].size*2048;
 	return RwStreamOpen(rwSTREAMMEMORY, rwSTREAMREAD, &mem);
@@ -262,7 +292,7 @@ RwStream*
 OpenStream(const char *name)
 {
 	char path[256];
-	sprintf(path, "./models/%s", name);
+	sprintf(path, "host0:./models/%s", name);
 	return RwStreamOpen(rwSTREAMFILENAME, rwSTREAMREAD, path);
 }
 #endif
@@ -337,6 +367,8 @@ InitDirectory(void)
 {
 	int fd;
 
+// TODO: make this work with images on host
+#ifdef USE_CDIMAGE
 	fd = CFileMgr::OpenFile("cdrom0:\\MODELS\\GTA3.DIR");
 	if(fd == 0){
 		printf("error opening\n");
@@ -345,12 +377,19 @@ InitDirectory(void)
 	LoadDirectory(fd);
 	CFileMgr::CloseFile(fd);
 	streamBuffer = (uint8*)RwMalloc(maxFileSize*2048);
+	assert(((uint32)streamBuffer & 0xF) == 0);
 
+#ifdef CDROM
+	CFileMgr::GetCdFile("\\MODELS\\GTA3.IMG;1", imageSize, imageOffset);
+	printf("gta3.img: %d %d %d\n", imageOffset, imageSize, imageOffset+imageSize);
+#else
 	cdImageFD = CFileMgr::OpenFile("cdrom0:\\MODELS\\GTA3.IMG");
 	if(cdImageFD == 0){
 		printf("error opening\n");
 		return;
 	}
+#endif
+#endif
 }
 
 RwBool 
@@ -360,8 +399,6 @@ Initialise3D(void)
 		RsErrorMessage("Error initializing RenderWare.");
 		return FALSE;
 	}
-
-	InitDirectory();
 
 	Charset = RtCharsetCreate(&ForegroundColor, &BackgroundColor);
 	if(Charset == NULL) {
@@ -390,16 +427,6 @@ Initialise3D(void)
 	Camera = CreateCamera(World);
 	if(Camera == NULL) {
 		RsErrorMessage("Cannot create camera.");
-		return FALSE;
-	}
-
-	TexDict = LoadTextureDictionary("player.txd");
-	if(TexDict)
-		RwTexDictionarySetCurrent(TexDict);
-
-	Clump = CreateClump(World);
-	if(Clump == NULL) {
-		RsErrorMessage("Cannot create clump.");
 		return FALSE;
 	}
 
@@ -692,7 +719,8 @@ GetModulePath(const char *module)
 #define TOSTRING(arg) TOSTRING__(arg)
 	for(s = tmp; *s; s++)
 		if(isupper(*s)) *s = tolower(*s);
-	sprintf(path, "host0:%s/modules/", TOSTRING(IOPPATH));
+//	sprintf(path, "host0:%s/modules/", TOSTRING(IOPPATH));
+	sprintf(path, "host0:./modules/");
 #endif
 	strcat(path, tmp);
 	return path;
@@ -709,9 +737,29 @@ LoadModule(const char *module)
 		printf("Can't Load Module %s\n", path);
 }
 
+RwBool
+LoadGame(void)
+{
+	InitDirectory();
+
+	TexDict = LoadTextureDictionary("player.txd");
+	if(TexDict)
+		RwTexDictionarySetCurrent(TexDict);
+
+	Clump = CreateClump(World);
+	if(Clump == NULL) {
+		RsErrorMessage("Cannot create clump.");
+		return FALSE;
+	}
+
+	return TRUE;
+}
+
 void
 TheGame(void)
 {
+	LoadGame();
+
 	while (!RsGlobal.quit) {
 		static RwUInt32     lastpoll = 0;
 		RwUInt32            polltime;
@@ -755,6 +803,12 @@ SystemInit(void)
 	sceFsReset();
 #endif
 
+	CFileMgr::Initialise();
+
+#ifdef CDROM
+	CFileMgr::InitCd();
+#endif
+
 	LoadModule("SIO2MAN.IRX");
 	LoadModule("PADMAN.IRX");
 
@@ -768,12 +822,35 @@ SystemInit(void)
 	EnableIntc(INTC_TIM0);
 }
 
+RwBool
+CreateDebugFont(void)
+{
+	if (!RtCharsetOpen()) {
+		RwEngineStop();
+		RwEngineClose();
+		RwEngineTerm();
+		return (FALSE);
+	}
+	return TRUE;
+}
+
 void
 GameInit(void)
 {
-	RwRect              r;
+	RwRect r;
+
+	LoadModule("CDSTREAM.IRX");
+	CdStreamInit(5);
 
 	Initialise3D();
+
+#ifdef CDROM
+	SkyRegisterFileOnCd("\\SYSTEM.CNF;1");	// just for testing
+	SkyRegisterFileOnCd("\\MODELS\\GTA3.DIR;1");
+	SkyRegisterFileOnCd("\\MODELS\\GTA3.IMG;1");
+#endif
+
+	CreateDebugFont();
 
 	r.x = 0;
 	r.y = 0;
@@ -867,13 +944,6 @@ RsRwInitialise(void)
 	RsSelectDevice();
 
 	if (!RwEngineStart()) {
-		RwEngineClose();
-		RwEngineTerm();
-		return (FALSE);
-	}
-
-	if (!RtCharsetOpen()) {
-		RwEngineStop();
 		RwEngineClose();
 		RwEngineTerm();
 		return (FALSE);
